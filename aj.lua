@@ -1125,17 +1125,23 @@ task.spawn(function()
     end
 end)
 
--- catch up on messages missed during teleport (gateway was dead between servers)
+local processedMessages = {}
+
 do
     local msgs = fetchMessages(nil)
+
     for i = #msgs, 1, -1 do
-        processJoinMessage(msgs[i])
+        local msg = msgs[i]
+
+        if not processedMessages[msg.id] then
+            processedMessages[msg.id] = true
+            processJoinMessage(msg)
+        end
     end
+
     if msgs[1] then
         lastMessageId = msgs[1].id
     end
 end
 
 connectgateway()
---
-print(tick()-a)
