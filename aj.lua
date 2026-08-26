@@ -1125,18 +1125,84 @@ task.spawn(function()
     end
 end)
 
-local processedMessages = {}
+local function processJoinMessage(messageData)
+    if not messageData or not messageData.author then return end
+    if messageData.channel_id and messageData.channel_id ~= chanelid then return end
 
+    -- Skip if we already reacted with ✅
+    for _, reaction in ipairs(messageData.reactions or {}) do
+        if reaction.emoji
+            and reaction.emoji.name == "✅"
+            and reaction.me == true then
+            return
+        end
+    end
+
+    local content = messageData.content or ""
+
+    local placeId, jobId = string.match(
+        content,
+        "(%d+),%s*'([^']+)'"
+    )
+
+    if not (placeId and jobId) then
+        placeId, jobId = string.match(
+            content,
+            'TeleportToPlaceInstance%s*%(%s*"(%d+)"%s*,%s*"([^"]+)"'
+        )
+    end
+
+    if not (placeId and jobId) then return end
+    if not joinGames[tonumber(placeId)] then return end
+
+    -- Already processed
+    if inlist("jnubs.txt", messageData.id) then
+        return
+    end
+
+    -- Already in this server
+    if jobId == game.JobId then
+        return
+    end
+
+    -- Don't queue duplicates
+    local q = readlist("queue.txt")
+
+    for _, j in ipairs(q) do
+        if j.msgid == messageData.id then
+            return
+        end
+    end
+
+    -- React once
+    task.spawn(function()
+        react(messageData.id, "✅")
+    end)
+
+    writefile("nub.txt", messageData.author.username)
+
+    if teleporting then
+        teleportTo(placeId, jobId, messageData.id)
+        return
+    end
+
+    table.insert(q, {
+        placeId = placeId,
+        jobId = jobId,
+        msgid = messageData.id,
+        author = messageData.author.username
+    })
+
+    writelist("queue.txt", q)
+end
+
+
+-- Catch up on messages missed during teleport
 do
     local msgs = fetchMessages(nil)
 
     for i = #msgs, 1, -1 do
-        local msg = msgs[i]
-
-        if not processedMessages[msg.id] then
-            processedMessages[msg.id] = true
-            processJoinMessage(msg)
-        end
+        processJoinMessage(msgs[i])
     end
 
     if msgs[1] then
@@ -1145,3 +1211,5 @@ do
 end
 
 connectgateway()
+
+print(tick() - a)
